@@ -2,13 +2,15 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
+import os
 from fpdf import FPDF
 
 st.set_page_config(layout="wide", page_title="Evaluación de TC por Subestación")
 
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    st.image("logo_saesa.png")
+    if os.path.exists("logo_saesa.png"):
+        st.image("logo_saesa.png")
 
 st.markdown("""
 <style>
@@ -21,21 +23,21 @@ def generar_plantilla():
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_plantilla = pd.DataFrame({
-            "Subestacion": ["S/E Temuco"]*4 + ["S/E Valdivia"]*3,
-            "Ipsc_A": [16391.0]*4 + [12500.0]*3,
-            "Relacion_XR": [8.95]*4 + [10.5]*3,
-            "Isr_Perm_A": [5.0]*7,
-            "ALFn": [20.0]*7,
-            "Res_20_Ohm_km": [3.3]*7,
-            "Largo_Perm_m": [40.0]*4 + [55.0]*3,
-            "Burden_Rele_Perm_VA": [0.5]*7,
-            "Metodo_RCT": ["0.5 * Rb"]*4 + ["Prueba FAT"]*3,
-            "Delta_Phi_min": [6.0]*7,
-            "t_al_s": [0.005]*7,
-            "N_TAP": [1, 2, 3, 4, 1, 2, 3],
-            "TAP": [800.0, 600.0, 400.0, 200.0, 1200.0, 800.0, 400.0],
-            "Burden": [50.0, 45.0, 30.0, 15.0, 50.0, 30.0, 15.0],
-            "RCT_FAT": [1.1, 0.9, 0.6, 0.3, 1.25, 0.85, 0.45]
+            "Subestacion": ["ALTAMIRANO 110 kV B1"]*2 + ["S/E Valdivia"]*2,
+            "Ipsc_A": [48.864]*2 + [12500.0]*2,
+            "Relacion_XR": [5.868]*2 + [10.5]*2,
+            "Isr_Perm_A": [5]*4,
+            "ALFn": [20]*4,
+            "Res_20_Ohm_km": [3.76]*2 + [3.3]*2,
+            "Largo_Perm_m": [59.7]*2 + [55.0]*2,
+            "Burden_Rele_Perm_VA": [0.5]*4,
+            "Metodo_RCT": ["0.5 * Rb"]*2 + ["Prueba FAT"]*2,
+            "Delta_Phi_min": [6]*4,
+            "t_al_s": [0.005]*4,
+            "N_TAP": [1, 2, 1, 2],
+            "TAP": [400, 200, 1200, 800],
+            "Burden": [30, 15, 50, 30],
+            "RCT_FAT": [0, 0, 1.25, 0.85]
         })
         df_plantilla.to_excel(writer, sheet_name="Evaluacion_TC", index=False)
     return output.getvalue()
@@ -54,7 +56,7 @@ def evaluar_subestacion(df_sub):
     res_20 = float(d_gen["Res_20_Ohm_km"])
     largo_perm = float(d_gen["Largo_Perm_m"])
     burden_rele_perm = float(d_gen["Burden_Rele_Perm_VA"])
-    metodo_rct = str(d_gen["Metodo_RCT"])
+    metodo_rct = str(d_gen["Metodo_RCT"]).strip()
     delta_phi = float(d_gen["Delta_Phi_min"])
     t_al = float(d_gen["t_al_s"])
     
@@ -138,14 +140,14 @@ def evaluar_subestacion(df_sub):
         "estado_gen_perm": estado_gen_perm, "estado_gen_trans": estado_gen_trans
     }
 
-# 3. GENERADORES DE INFORMES GLOBALES (TODO EN UN DOCUMENTO)
+# 3. GENERADORES DE INFORMES
 def sanitize_text(text):
-    return str(text).replace('Ω', 'Ohm').replace('°', 'grados').replace('Δ', 'Delta').replace('φ', 'phi').replace('θ', 'theta').replace('ω', 'w').replace('²', '2')
+    text = str(text).replace('Ω', 'Ohm').replace('°', 'grados').replace('Δ', 'Delta').replace('φ', 'phi').replace('θ', 'theta').replace('ω', 'w').replace('²', '2').replace('—', '-').replace('–', '-')
+    return text.encode('latin-1', 'replace').decode('latin-1')
 
 def generar_excel_global(resultados, inc_perm, inc_trans):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Hoja 1: Resumen General
         resumen_data = []
         for sub, d in resultados.items():
             resumen_data.append({
@@ -157,9 +159,8 @@ def generar_excel_global(resultados, inc_perm, inc_trans):
             })
         pd.DataFrame(resumen_data).to_excel(writer, sheet_name="Resumen Global", index=False)
         
-        # Hojas por Subestación (Máx 31 caracteres para nombre de hoja)
         for sub, d in resultados.items():
-            sheet_name = sub[:31].replace('/', '-').replace('[', '').replace(']', '')
+            sheet_name = sub[:31].replace('/', '-').replace('[', '').replace(']', '').replace('*', '')
             start_row = 0
             d_gen = d["d_gen"]
             
@@ -191,7 +192,7 @@ def generar_pdf_global(resultados, inc_perm, inc_trans):
     for sub, d in resultados.items():
         pdf.add_page()
         pdf.set_font("Arial", 'B', 14)
-        pdf.cell(0, 10, sanitize_text(f"Reporte de Evaluación de TC — {sub}"), ln=True, align='C')
+        pdf.cell(0, 10, sanitize_text(f"Reporte de Evaluación de TC - {sub}"), ln=True, align='C')
         pdf.ln(5)
         d_gen = d["d_gen"]
         
@@ -242,10 +243,17 @@ with st.sidebar:
     st.markdown("---")
     st.header("2. Cargar Evaluación")
     archivo_excel = st.file_uploader("Sube el archivo Excel con tus datos", type=["xlsx"])
+    
+    st.markdown("---")
+    st.subheader("3. Configurar Informes")
+    inc_perm = st.checkbox("Régimen Permanente", value=True)
+    inc_trans = st.checkbox("Régimen Transitorio", value=True)
 
 if archivo_excel is not None:
     try:
-        df_tot = pd.read_excel(archivo_excel)
+        # Lee la primera hoja independientemente de cómo se llame la pestaña
+        df_tot = pd.read_excel(archivo_excel, sheet_name=0)
+        df_tot.columns = df_tot.columns.str.strip() # Limpia espacios en las columnas
         
         resultados_total = {}
         resumen_data = []
@@ -264,6 +272,27 @@ if archivo_excel is not None:
             
         st.subheader("Resumen Global de Subestaciones Evaluadas")
         st.dataframe(pd.DataFrame(resumen_data), hide_index=True, use_container_width=True)
+        
+        # BOTONES DE DESCARGA GLOBAL EN PANTALLA PRINCIPAL
+        st.markdown("### 📥 Descargar Informe Global (Todas las Subestaciones)")
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.download_button(
+                label="📄 Descargar TODO en PDF",
+                data=generar_pdf_global(resultados_total, inc_perm, inc_trans),
+                file_name="Reporte_Global_TC.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        with col_g2:
+            st.download_button(
+                label="📊 Descargar TODO en Excel",
+                data=generar_excel_global(resultados_total, inc_perm, inc_trans),
+                file_name="Reporte_Global_TC.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+            
         st.markdown("---")
         
         # Inspector individual
@@ -285,30 +314,28 @@ if archivo_excel is not None:
         with t_trans:
             st.dataframe(d["df_trans"], hide_index=True, use_container_width=True)
             
-        # Opciones de Reporte Consolidado
-        with st.sidebar:
-            st.markdown("---")
-            st.subheader("3. Descargar Informe Global")
-            inc_perm = st.checkbox("Régimen Permanente", value=True)
-            inc_trans = st.checkbox("Régimen Transitorio", value=True)
-            
+        # BOTONES DE DESCARGA INDIVIDUAL EN PANTALLA PRINCIPAL
+        st.markdown(f"### 📥 Descargar Informe Individual ({sub_sel})")
+        col_i1, col_i2 = st.columns(2)
+        nombre_base = sub_sel.replace(' ', '_').replace('/', '-')
+        with col_i1:
             st.download_button(
-                label="📄 Descargar Informe Global (PDF)",
-                data=generar_pdf_global(resultados_total, inc_perm, inc_trans),
-                file_name="Reporte_Global_TC.pdf",
+                label=f"📄 PDF - {sub_sel}",
+                data=generar_pdf_global({sub_sel: d}, inc_perm, inc_trans),
+                file_name=f"Reporte_{nombre_base}.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
-            
+        with col_i2:
             st.download_button(
-                label="📊 Descargar Informe Global (Excel)",
-                data=generar_excel_global(resultados_total, inc_perm, inc_trans),
-                file_name="Reporte_Global_TC.xlsx",
+                label=f"📊 Excel - {sub_sel}",
+                data=generar_excel_global({sub_sel: d}, inc_perm, inc_trans),
+                file_name=f"Reporte_{nombre_base}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
 
     except Exception as e:
-        st.error(f"Error al procesar el archivo Excel. Asegúrate de usar el formato de la plantilla. Detalle: {e}")
+        st.error(f"Error al procesar el archivo Excel. Detalle técnico: {e}")
 else:
-    st.info("👆 Descarga la plantilla en el botón de arriba, rellénala con tus datos y súbela aquí mismo para procesar todo.")
+    st.info("👆 Descarga la plantilla en la barra lateral, rellénala con tus datos y súbela para procesar las subestaciones.")
