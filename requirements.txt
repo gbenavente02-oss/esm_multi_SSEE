@@ -1,6 +1,7 @@
 streamlit
 pandas
 numpy
-fpdf
-xlsxwriter
+matplotlib
 openpyxl
+xlsxwriter
+fpdf
